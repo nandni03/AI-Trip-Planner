@@ -1,0 +1,126 @@
+{
+  "name": "AI Trip Planner",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI Trip Planner",
+        "formDescription": "Here to help you make your travelling experience easier!",
+        "formFields": {
+          "values": [
+            { "fieldLabel": "Destination🗺️", "requiredField": true },
+            { "fieldLabel": "Travel Dates(Start)🗓️", "fieldType": "date" },
+            { "fieldLabel": "Travel Dates(End)🗓️", "fieldType": "date" },
+            { "fieldLabel": "Budget💵", "fieldType": "number" },
+            { "fieldLabel": "No. of Travellers", "fieldType": "number" },
+            { "fieldLabel": "Email", "fieldType": "email" }
+          ]
+        }
+      },
+      "name": "On form submission",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5
+    },
+
+    {
+      "parameters": {
+        "url": "=http://api.openweathermap.org/geo/1.0/direct?q={{ $json['Destination🗺️'] }}&limit=1&appid={{OPENWEATHER_API_KEY}}"
+      },
+      "name": "GEO API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+
+    {
+      "parameters": {
+        "url": "=https://api.openweathermap.org/data/2.5/weather?lat={{$json.lat}}&lon={{$json.lon}}&appid={{OPENWEATHER_API_KEY}}&units=metric"
+      },
+      "name": "Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+
+    {
+      "parameters": {
+        "url": "=https://restcountries.com/v3.1/alpha/{{ $('GEO API').item.json.country }}"
+      },
+      "name": "Country API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search.json?engine=google_hotels&q={{ $('On form submission').item.json['Destination🗺️'] }}+Resorts&check_in_date={{ $('On form submission').item.json['Travel Dates(Start)🗓️'] }}&check_out_date={{ $('On form submission').item.json['Travel Dates(End)🗓️'] }}&adults={{ $json['No. of Travellers'] }}&api_key={{SERPAPI_API_KEY}}"
+      },
+      "name": "Hotel API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Filter hotels within budget and return top 5\nconst hotels = $json.properties || [];\nconst budget = $(\"On form submission\").first().json[\"Budget💵\"] || Infinity;\n\nconst filtered = hotels\n  .filter(h => (h.rate_per_night?.extracted_lowest || 0) <= budget)\n  .sort((a, b) => (b.overall_rating || 0) - (a.overall_rating || 0))\n  .slice(0, 5);\n\nreturn filtered.map(h => ({\n  json: {\n    name: h.name,\n    price: h.rate_per_night?.lowest || 'N/A',\n    rating: h.overall_rating || 'N/A'\n  }\n}));"
+      },
+      "name": "Filter Hotels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant"
+      },
+      "name": "Groq Model (Itinerary)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "credentials": {
+        "groqApi": {
+          "id": "REPLACE_WITH_ENV",
+          "name": "Groq API"
+        }
+      }
+    },
+
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant"
+      },
+      "name": "Groq Model (Research)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "credentials": {
+        "groqApi": {
+          "id": "REPLACE_WITH_ENV",
+          "name": "Groq API"
+        }
+      }
+    },
+
+    {
+      "parameters": {
+        "sendTo": "={{ $('On form submission').item.json.Email }}",
+        "subject": "Your AI Travel Plan",
+        "message": "={{ $json.email }}"
+      },
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_ENV",
+          "name": "Gmail OAuth"
+        }
+      }
+    }
+  ],
+
+  "connections": {},
+
+  "settings": {
+    "executionOrder": "v1"
+  },
+
+  "meta": {
+    "note": "API keys and credentials are removed. Use environment variables."
+  }
+}
